@@ -1,0 +1,222 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+<meta charset="utf-8">
+<title>粒子</title>
+<style type="text/css">
+    *{
+        margin: 0;
+        padding: 0;
+    }
+    html,body{
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+    }
+    #stage{
+        background: #000;
+    }
+</style>
+</head>
+<body>
+    <canvas id="stage"></canvas>
+    <script type="text/javascript">
+        class Trailer {
+            constructor(options){
+                this.stage = options.stage
+                this.ctx = this.stage.getContext('2d')
+                this.particles = []//粒子池子
+                this.mouseXY = null //鼠标坐标
+                //加载icon
+                this.loadIcon(options.iconUrl,() => {
+                    //初始化
+                    this.init()
+                })
+            }
+            init(){
+                //窗口resize
+                this.windowResize()
+                //绑定事件
+                this.bindEve()
+                //渲染
+                this.render()
+            }
+            loadIcon(url,fn){
+                let img = new Image
+                img.src = url
+                img.onload = (e) => {
+                    this.iconImg = img
+                    typeof fn == 'function' && fn()
+                }
+            }
+            //窗口尺寸
+            windowResize(){
+                let {innerWidth,innerHeight} = window
+                this.stage.width = innerWidth
+                this.stage.height = innerHeight
+            }
+            //绘制点
+            drawPoint(point,init = false){
+                let state = false
+                let range = 4
+                if(!init){
+                    if(point.x > 0){
+                        point.x += Math.random() * range * point.intensity
+                    }else{
+                        point.x -= Math.random() * range * point.intensity
+                    }
+                    point.y += Math.random() * point.intensity
+                    point.scale -= .03
+                    point.opacity -= .03
+                }
+                this.ctx.save()
+                this.ctx.globalAlpha = point.opacity
+                this.ctx.translate(point.org.x,point.org.y)
+                this.ctx.scale(point.scale,point.scale)
+                this.ctx.rotate(point.org.radian)
+                this.ctx.beginPath();
+                this.ctx.fillStyle = '#ff9600';
+                this.ctx.arc(point.x,point.y,point.r,0,2*Math.PI);
+                this.ctx.fill();
+                this.ctx.closePath()
+                this.ctx.restore()
+                return point.scale <= 0
+            }
+            //创建粒子
+            createParticle(x,y,radian){
+                let points = []
+                let r = 1
+                //创建点
+                while(points.length < 10){
+                    let _x = Math.sin(Math.random() * 360 * (Math.PI / 180)) * r,
+                        _y = Math.cos(Math.random() * 360 * (Math.PI / 180)) * r
+                    let point = {
+                        org : {
+                            x,y,radian
+                        },
+                        x : _x,
+                        y : _y,
+                        r : 1,
+                        intensity : Math.abs(_x / r),//力度
+                        scale : 1,
+                        opacity : 1
+                    }
+                    this.drawPoint(point,true)
+                    //插入
+                    points.push(point)
+                }
+                //返回
+                return {
+                    info : {
+                        x,y,radian
+                    },
+                    update : () => {
+                        for(let i = 0; i < points.length; i++){
+                            if(this.drawPoint(points[i])){
+                                points.splice(i,1)
+                                i--
+                            }
+                        }
+                        return points.length == 0
+                    }
+                }
+            }
+            //粒子更新
+            particlesUpdate(){
+                for(let i = 0; i < this.particles.length; i++){
+                    if(this.particles[i].update()){
+                        this.particles.splice(i,1)
+                        i--
+                    }
+                }
+            }
+            //绘制icon
+            drawIcon(){
+                if((!this.particles.length && !this.lastInfo) || !this.iconImg || !this.mouseXY){ return }
+                if(this.particles.length){
+                    this.lastInfo = this.particles[this.particles.length - 1].info
+                }
+                let {x,y}  = this.mouseXY
+                let {width,height} = this.iconImg
+                let radian = Math.atan2(y - this.lastInfo.y, x - this.lastInfo.x)
+                this.ctx.save()
+                this.ctx.translate(x,y)
+                this.ctx.rotate(radian)
+                this.ctx.drawImage(
+                    this.iconImg,
+                    0,
+                    0,
+                    width,
+                    height,
+                    -width,
+                    -height / 2,
+                    width,
+                    height
+                )
+                this.ctx.restore()
+            }
+            //绑定事件
+            bindEve(){
+                //记录上一次鼠标坐标
+                let prevMouse = null
+                //鼠标移动事件
+                this.stage.addEventListener('mousemove',e => {
+                    let {clientX,clientY} = e
+                    if(!prevMouse){
+                        prevMouse = {
+                            x : clientX,
+                            y : clientY
+                        }
+                        return 
+                    }
+                    //默认基于基础坐标换取角度
+                    setTimeout(() => {
+                        //当前鼠标坐标
+                        this.mouseXY = {
+                            x : clientX,
+                            y : clientY
+                        }
+                        //换算角度
+                        let radian = Math.atan2(clientY - prevMouse.y, clientX - prevMouse.x)
+                        let diffX = Math.cos(radian) * (this.iconImg.width * 1.1),
+                            diffY = Math.sin(radian) * (this.iconImg.width * 1.1)
+                        let x = clientX - diffX,
+                            y = clientY - diffY
+                        this.particles.push(this.createParticle(x,y,radian))
+                        setTimeout(() => {
+                            //更新坐标点
+                            prevMouse.x = clientX
+                            prevMouse.y = clientY
+                        },200)
+                    },200)
+                    
+                })
+                //窗口resize
+                window.addEventListener('resize',e => {
+                    this.windowResize()
+                })
+            }
+            //清理舞台
+            clearStage(){
+                let {innerWidth,innerHeight} = window
+                this.ctx.clearRect(0,0,innerWidth,innerHeight)
+            }
+            //渲染
+            render(){
+                requestAnimationFrame(this.render.bind(this))
+                //清理画布
+                this.clearStage()
+                //更新粒子
+                this.particlesUpdate()
+                //绘制icon
+                this.drawIcon()
+            }
+        }
+        //实例化
+        new Trailer({
+            stage : document.getElementById('stage'),
+            iconUrl : './image/tyj.png'
+        })
+    </script>
+</body>
+</html>
